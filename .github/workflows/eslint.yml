@@ -1,0 +1,43 @@
+name: ESLint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eslint:
+    name: Scan backend and frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ESLINT_USE_FLAT_CONFIG: 'true'
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Report source lint findings
+        run: |
+          status=0
+          pnpm exec eslint --config eslint.config.mjs apps/backend apps/frontend || status=$?
+          case "$status" in
+            0) ;;
+            1) echo '::warning::ESLint reported findings. See the scan output for affected files.' ;;
+            *) exit "$status" ;;
+          esac

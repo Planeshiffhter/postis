@@ -1,0 +1,177 @@
+services:
+  postiz:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        NEXT_PUBLIC_VERSION: local
+        NEXT_PUBLIC_BACKEND_URL: '${NEXT_PUBLIC_BACKEND_URL:-${FRONTEND_URL:-http://localhost:${POSTIZ_PORT:-4007}}/api}'
+        NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY: '/uploads'
+        STORAGE_PROVIDER: '${STORAGE_PROVIDER:-local}'
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MAIN_URL: '${MAIN_URL:-${FRONTEND_URL:-http://localhost:${POSTIZ_PORT:-4007}}}'
+      FRONTEND_URL: '${FRONTEND_URL:-http://localhost:${POSTIZ_PORT:-4007}}'
+      NEXT_PUBLIC_BACKEND_URL: '${NEXT_PUBLIC_BACKEND_URL:-${FRONTEND_URL:-http://localhost:${POSTIZ_PORT:-4007}}/api}'
+      BACKEND_INTERNAL_URL: 'http://localhost:3000'
+      JWT_SECRET: '${JWT_SECRET:?Set JWT_SECRET in .env or the shell}'
+      DATABASE_URL: 'postgresql://postiz-user:postiz-password@postgres:5432/postiz-db-local'
+      REDIS_URL: 'redis://redis:6379'
+      TEMPORAL_ADDRESS: 'temporal:7233'
+      TEMPORAL_NAMESPACE: 'default'
+      # Keep connections to local services on the Compose network.
+      NO_PROXY: &app_no_proxy '${NO_PROXY:+${NO_PROXY},}${no_proxy:+${no_proxy},}localhost,127.0.0.1,postgres,redis,temporal'
+      no_proxy: *app_no_proxy
+      IS_GENERAL: 'true'
+      STORAGE_PROVIDER: '${STORAGE_PROVIDER:-local}'
+      UPLOAD_DIRECTORY: '/uploads'
+      NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY: '/uploads'
+      NEXT_TELEMETRY_DISABLED: '1'
+    ports:
+      - '127.0.0.1:${POSTIZ_PORT:-4007}:5000'
+    volumes:
+      - postiz-config:/config
+      - postiz-uploads:/uploads
+    networks:
+      - default
+      - backing
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "Promise.all(['/api/', '/auth/login'].map(path => fetch('http://127.0.0.1:5000' + path))).then(responses => process.exit(responses.every(response => response.ok) ? 0 : 1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postiz-user
+      POSTGRES_PASSWORD: postiz-password
+      POSTGRES_DB: postiz-db-local
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - backing
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'pg_isready',
+          '-h',
+          '127.0.0.1',
+          '-U',
+          'postiz-user',
+          '-d',
+          'postiz-db-local',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7.2
+    volumes:
+      - redis-data:/data
+    networks:
+      - backing
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    environment:
+      DB: postgres12
+      DB_PORT: '5432'
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+      ENABLE_ES: 'true'
+      ES_SEEDS: temporal-elasticsearch
+      ES_VERSION: v7
+      # Temporal's gRPC services discover and dial this container's private IP.
+      NO_PROXY: '*'
+      no_proxy: '*'
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    networks:
+      - backing
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+      temporal-elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - temporal
+        - operator
+        - namespace
+        - describe
+        - --namespace
+        - default
+        - --address
+        - temporal:7233
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  temporal-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes:
+      - temporal-postgres-data:/var/lib/postgresql/data
+    networks:
+      - backing
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', 'temporal']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  temporal-elasticsearch:
+    image: elasticsearch:7.17.27
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: '-Xms256m -Xmx256m'
+      xpack.security.enabled: 'false'
+    volumes:
+      - temporal-elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - backing
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:9200/_cluster/health']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+networks:
+  backing:
+    internal: true
+
+volumes:
+  postgres-data:
+  redis-data:
+  temporal-postgres-data:
+  temporal-elasticsearch-data:
+  postiz-config:
+  postiz-uploads:
