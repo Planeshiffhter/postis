@@ -44,32 +44,35 @@ export async function openLocalDatabase() {
   return new PrismaClient({ datasourceUrl });
 }
 
-const apiOrigin = localOrigin(
+export function localApi(value) {
+  const origin = localOrigin(value);
+  return (path, { json, headers, ...options } = {}) => {
+    const url = new URL(path, origin);
+    if (url.origin !== origin || !path.startsWith('/')) {
+      throw new Error('QA requires a local API path');
+    }
+    const requestHeaders = new Headers(headers);
+    if (json !== undefined) {
+      requestHeaders.set('content-type', 'application/json');
+      options.body = JSON.stringify(json);
+    }
+    return fetch(url, {
+      signal: AbortSignal.timeout(20_000),
+      ...options,
+      redirect: 'manual',
+      headers: requestHeaders,
+    });
+  };
+}
+
+export const api = localApi(
   process.env.POSTIZ_QA_API || 'http://127.0.0.1:3000'
 );
 
-export function api(path, { json, headers, ...options } = {}) {
-  const url = new URL(path, apiOrigin);
-  if (url.origin !== apiOrigin || !path.startsWith('/')) {
-    throw new Error('QA requires a local API path');
-  }
-  const requestHeaders = new Headers(headers);
-  if (json !== undefined) {
-    requestHeaders.set('content-type', 'application/json');
-    options.body = JSON.stringify(json);
-  }
-  return fetch(url, {
-    signal: AbortSignal.timeout(20_000),
-    ...options,
-    redirect: 'manual',
-    headers: requestHeaders,
-  });
-}
-
-export async function createAccount() {
+export async function createAccount(send = api) {
   const email = `postiz-qa-${randomUUID()}@example.invalid`;
   const password = randomBytes(24).toString('hex');
-  const response = await api('/auth/register', {
+  const response = await send('/auth/register', {
     method: 'POST',
     json: { email, company: 'Postiz QA', password, provider: 'LOCAL' },
   });
@@ -92,7 +95,7 @@ export async function createAccount() {
     request(path, options = {}) {
       const headers = new Headers(options.headers);
       headers.set('cookie', cookie);
-      return api(path, { ...options, headers });
+      return send(path, { ...options, headers });
     },
   };
 }

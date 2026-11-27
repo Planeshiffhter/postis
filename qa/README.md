@@ -16,7 +16,9 @@ The API, frontend, and worker default to ports 3000, 4200, and 3002. Set `POSTIZ
 
 With Chromium and the workspace's Playwright package installed, run `node qa/browser-check.mjs` against the default native ports. Set `POSTIZ_QA_CHROMIUM` if Chromium is installed outside `/usr/bin/chromium`. The browser check submits the login form, then opens authenticated pages and checks logout.
 
-The core suite uses the backend output produced by the native dev command for isolated API fixtures and media adapters. Run `FRONTEND_URL=http://localhost:4200 pnpm run build:extension` and then `node --test qa/extension-check.mjs` to exercise the built extension background bundle with mocked Chrome APIs.
+Run `node qa/browser-extended.mjs` for calendar view controls, media upload and deletion, and settings persistence. This run blocks third-party requests and hides the Next.js development overlay so a blocked script cannot intercept clicks.
+
+The core suite uses the backend and orchestrator output produced by the native dev commands for the isolated API and clipping fixtures. The clipping fixture creates and removes its own local Temporal namespace. Run `FRONTEND_URL=http://localhost:4200 pnpm run build:extension` and then `node --test qa/extension-check.mjs` to exercise the built extension background bundle with mocked Chrome APIs.
 
 ### Loopback provider fixtures
 
@@ -41,17 +43,20 @@ Stop the two dedicated processes after the run. Both fixtures listen only on loo
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Startup                         | Frontend login markup, anonymous calendar redirect, API root, and Temporal-backed worker health                                                                                |
 | Accounts and team               | Registration, bad password rejection, login, logout, profile, timezone, preferences, invitations, membership removal, and organization switching                               |
+| Account deletion                | Credential scrubbing, session and API-key revocation, and preservation of a teammate's separate organization                                                                   |
 | Email and recovery              | Activation, resend, password reset, and login with the replacement password through a loopback SMTP server                                                                     |
 | Calendar and scheduling         | Calendar queries and next slot, tags, draft creation, schedule, reschedule, and cancellation with Temporal workflow history                                                    |
 | Draft review                    | Public preview page and API, anchored guest comments, replies, resolution and reopening, and cross-organization resolution rejection                                           |
+| Public drafts                   | Organization-scoped creation, date handling, CLI attribution, in-place settings and attachment updates, and deletion                                                           |
 | Media                           | PNG upload, search, download and byte comparison, and removal from the library                                                                                                 |
 | AI image generation             | Prompt refinement, model request, base64 output, and saving the generated PNG through a loopback OpenAI mock                                                                   |
 | Media processors                | Local R2 URL signing, RunPod request and response handling against a mock, and absent-provider feature states                                                                  |
-| Billing                         | Initial subscription state and raw-body Stripe signature verification on both webhook routes                                                                                   |
+| Clipping                        | Real Temporal workflow with mocked activities for retries, child render work, failures, and draft creation                                                                     |
+| Billing                         | Subscription state, plan limits and role checks, and Stripe signatures on both webhook routes                                                                                  |
 | Settings                        | Short links preference, signatures, and saved sets                                                                                                                             |
-| Integrations and analytics      | Provider catalog, channel groups and display names, posting times, empty connected channels, and analytics lookup for an unknown post                                          |
+| Integrations and analytics      | Provider catalog, channel groups and posting times, and real Threads adapter metrics against a network mock                                                                    |
 | Notifications and announcements | Unread counts, read tracking, organization isolation, announcement visibility, and rejection of unauthorized publishing                                                        |
-| Automation                      | Feed configuration and polling, draft creation, deactivation, and unlinked webhook management                                                                                  |
+| Automation                      | Feed polling and draft creation, plus webhook URL validation, channel linking, and organization-scoped webhook removal                                                         |
 | Publishing                      | Channel setup, Temporal publication, and release storage against a loopback WordPress fixture                                                                                  |
 | API, OAuth, and MCP             | Identity and key rotation, OAuth consent and token revocation, authenticated MCP tool calls, upload widget resources, and posting schemas for every advertised social provider |
 
@@ -61,6 +66,7 @@ The full production image built and ran in a disposable `docker-compose.local.ym
 
 - Autopost creation with `lastUrl` omitted returned HTTP 500. The DTO treats the field as optional, but the database write requires it. The current UI includes an empty `lastUrl` and its payload passed.
 - Both Stripe webhook routes returned HTTP 500 for missing or invalid signatures and for a payload changed after signing. The correctly signed fixture returned HTTP 201.
+- The `apps/commands` build returned TS2339 because `AgentGraphService.createGraph` is missing. The package start script points to `dist/apps/command` while the compiler emits to `dist/apps/commands`. Running the emitted entry directly also failed during Nest initialization because `NotificationService` could not resolve `TemporalService`.
 - On the native HTTP configuration, Chromium received a successful login response and stored the session cookie, but initially stayed on the login page. Opening the calendar directly with that session rendered the authenticated page. The cause of the initial navigation behavior remains unverified.
 - Live social OAuth, publishing and analytics, outbound webhook delivery, an external SMTP provider, hosted AI and clipping, cloud uploads, billing transactions, and third-party automations still require sandbox accounts, endpoints, or credentials. Email and publication fixtures stay on loopback.
 - The repository's Jest config imports undeclared `@nx/jest` and stops before test discovery. The commands above use Node's test runner.
