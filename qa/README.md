@@ -18,18 +18,20 @@ With Chromium and the workspace's Playwright package installed, run `node qa/bro
 
 ## Coverage
 
-| Area                       | Local verification                                                                                                                               |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Startup                    | Frontend login markup, anonymous calendar redirect, API root, and Temporal-backed worker health                                                  |
-| Accounts and team          | Registration, bad password rejection, login, logout, profile, timezone, preferences, invitations, membership removal, and organization switching |
-| Calendar and scheduling    | Calendar queries and next slot, tags, draft creation, schedule, reschedule, and cancellation with Temporal workflow history                      |
-| Media                      | PNG upload, search, download and byte comparison, and removal from the library                                                                   |
-| Settings                   | Short links preference, signatures, and saved sets                                                                                               |
-| Integrations and analytics | Provider catalog, empty connected channels, and analytics lookup for an unknown post                                                             |
-| Automation                 | Inactive feed and unlinked webhook management                                                                                                    |
-| API and OAuth              | Organization identity, key rotation, OAuth app management, consent, authorization-code exchange, approved-app revocation, and MCP discovery      |
+| Area                            | Local verification                                                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Startup                         | Frontend login markup, anonymous calendar redirect, API root, and Temporal-backed worker health                                                  |
+| Accounts and team               | Registration, bad password rejection, login, logout, profile, timezone, preferences, invitations, membership removal, and organization switching |
+| Calendar and scheduling         | Calendar queries and next slot, tags, draft creation, schedule, reschedule, and cancellation with Temporal workflow history                      |
+| Draft review                    | Public preview page and API, anchored guest comments, replies, resolution and reopening, and cross-organization resolution rejection             |
+| Media                           | PNG upload, search, download and byte comparison, and removal from the library                                                                   |
+| Settings                        | Short links preference, signatures, and saved sets                                                                                               |
+| Integrations and analytics      | Provider catalog, channel groups and display names, posting times, empty connected channels, and analytics lookup for an unknown post            |
+| Notifications and announcements | Unread counts, read tracking, organization isolation, announcement visibility, and rejection of unauthorized publishing                          |
+| Automation                      | Inactive feed and unlinked webhook management                                                                                                    |
+| API and OAuth                   | Organization identity, key rotation, OAuth app management, consent, authorization-code exchange, approved-app revocation, and MCP discovery      |
 
-The Chrome extension built and its archive passed ZIP integrity validation. The Node SDK built and made an authenticated request to the local integrations API. Extension behavior in social sites remains unverified.
+The full production image built and ran in a disposable `docker-compose.local.yml` project. Its login page, API, and Temporal-backed worker health passed before teardown. The Chrome extension built and its archive passed ZIP integrity validation. The Node SDK built and made an authenticated request to the local integrations API. Extension behavior in social sites remains unverified.
 
 ## Findings and coverage gaps
 

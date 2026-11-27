@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+
+const loopback = ['127.0.0.1', 'localhost', '[::1]'];
 
 export function localOrigin(value) {
   const url = new URL(value);
-  const loopback = ['127.0.0.1', 'localhost', '[::1]'];
   if (
     !loopback.includes(url.hostname) ||
     url.protocol !== 'http:' ||
@@ -18,6 +20,28 @@ export function localOrigin(value) {
     );
   }
   return url.origin;
+}
+
+export async function openLocalDatabase() {
+  const { PrismaClient } = await import('@prisma/client');
+  const { parse } = await import('dotenv');
+  const envFile = new URL('../.env', import.meta.url);
+  const settings = existsSync(envFile) ? parse(readFileSync(envFile)) : {};
+  const datasourceUrl = process.env.DATABASE_URL || settings.DATABASE_URL;
+  let database;
+  try {
+    database = new URL(datasourceUrl);
+  } catch {
+    assert.fail('DATABASE_URL must be a local PostgreSQL URL');
+  }
+  assert.ok(
+    ['postgresql:', 'postgres:'].includes(database.protocol) &&
+      loopback.includes(database.hostname) &&
+      !database.searchParams.has('host') &&
+      !database.searchParams.has('hostaddr'),
+    'DATABASE_URL must use loopback PostgreSQL'
+  );
+  return new PrismaClient({ datasourceUrl });
 }
 
 const apiOrigin = localOrigin(

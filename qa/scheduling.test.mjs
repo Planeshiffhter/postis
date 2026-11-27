@@ -3,10 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
-import { PrismaClient } from '@prisma/client';
 import { Client, Connection, WorkflowNotFoundError } from '@temporalio/client';
 import { parse } from 'dotenv';
-import { createAccount } from './support.mjs';
+import { createAccount, openLocalDatabase } from './support.mjs';
 
 function localUrl(value, label, protocols) {
   let url;
@@ -48,16 +47,6 @@ test(
   async (t) => {
     const envFile = new URL('../.env', import.meta.url);
     const settings = existsSync(envFile) ? parse(readFileSync(envFile)) : {};
-    const databaseUrl = process.env.DATABASE_URL || settings.DATABASE_URL;
-    const database = localUrl(databaseUrl, 'DATABASE_URL', [
-      'postgresql:',
-      'postgres:',
-    ]);
-    assert.ok(
-      !database.searchParams.has('host'),
-      'DATABASE_URL must use its loopback hostname'
-    );
-
     const temporalAddress =
       process.env.TEMPORAL_ADDRESS ||
       settings.TEMPORAL_ADDRESS ||
@@ -80,15 +69,14 @@ test(
       process.env.TEMPORAL_NAMESPACE ||
       settings.TEMPORAL_NAMESPACE ||
       'default';
-    const prisma = new PrismaClient({ datasourceUrl: databaseUrl });
+    const prisma = await openLocalDatabase();
+    t.after(() => prisma.$disconnect());
     const connection = await Connection.connect({
       address: temporalUrl.host,
       connectTimeout: '5s',
     });
     const temporal = new Client({ connection, namespace });
-    t.after(async () => {
-      await Promise.all([prisma.$disconnect(), connection.close()]);
-    });
+    t.after(() => connection.close());
 
     const { request, email } = await createAccount();
     const user = await readJson(await request('/user/self'), 200);
